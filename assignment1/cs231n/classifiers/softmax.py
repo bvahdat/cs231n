@@ -33,7 +33,23 @@ def softmax_loss_naive(W, X, y, reg):
     #############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    num_classes = W.shape[1]
+    batch_size = X.shape[0]
+    batch_scores = X.dot(W)
+
+    for index in range(batch_size):
+      scores = batch_scores[index]
+      scores -= np.max(scores) # numeric stability
+      softmax = np.exp(scores) / np.sum(np.exp(scores))
+      loss += -np.log(softmax[y[index]])
+      for class_index in range(num_classes):
+        dW[:,class_index] += X[index] * softmax[class_index]
+      dW[:,y[index]] -= X[index]
+
+    loss /= batch_size
+    loss += reg * np.sum(W * W)
+    dW /= batch_size
+    dW += 2 * reg * W 
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
@@ -58,7 +74,22 @@ def softmax_loss_vectorized(W, X, y, reg):
     #############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    num_classes = W.shape[1]
+    batch_size = X.shape[0]
+    batch_scores = X.dot(W)
+
+    scores = X.dot(W)
+    scores = scores - np.max(scores, axis=1, keepdims=True)
+    softmax = np.exp(scores) / np.exp(scores).sum(axis=1, keepdims=True)
+    batch_indexes = np.arange(batch_size)
+    loss = np.sum(-np.log(softmax[batch_indexes, y]))
+    softmax[batch_indexes, y] -= 1
+    dW = X.T.dot(softmax)
+
+    loss /= batch_size
+    loss += reg * np.sum(W * W)
+    dW /= batch_size
+    dW += 2 * reg * W 
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
