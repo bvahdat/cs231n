@@ -27,7 +27,9 @@ def affine_forward(x, w, b):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    N = x.shape[0]
+    x_flattened = x.reshape(N, -1) # (N, D)
+    out = x_flattened.dot(w) + b  # (N, D) . (D, M) + (M,) = (N, M)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -60,7 +62,11 @@ def affine_backward(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    dx = dout.dot(w.T).reshape(x.shape) # (N, M) . (M, D) = (N, D) => (N, d1, ..., d_k)
+    N = x.shape[0]
+    x_flattened = x.reshape(N, -1) # (N, D)
+    dw = x_flattened.T.dot(dout) # (D, N) . (N, M) = (D, M)
+    db = dout.T.dot(np.ones(N)).reshape(dout.T.shape[0]) # (M, N) . (N, 1) = (M, 1) => (M,)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -86,7 +92,7 @@ def relu_forward(x):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    out = np.maximum(x, 0.) # (N, d1, ..., d_k)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -113,7 +119,9 @@ def relu_backward(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    N = x.shape[0]
+    x_flattened = x.reshape(N, -1) # (N, D)
+    dx = dout * np.where(x_flattened > 0., 1., 0.) # (d1, ..., d_k) . (d1, ..., d_k) = (d1, ..., d_k)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
