@@ -49,7 +49,14 @@ class TwoLayerNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        self.D = input_dim
+        self.M = hidden_dim
+        self.C = num_classes
+
+        self.params.update({'W1': weight_scale * np.random.randn(self.D, self.M),
+                            'W2': weight_scale * np.random.randn(self.M, self.C),
+                            'b1': np.zeros(hidden_dim),
+                            'b2': np.zeros(self.C)})
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -83,7 +90,14 @@ class TwoLayerNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        W1, b1, W2, b2 = self.params['W1'], self.params['b1'], self.params['W2'], self.params['b2']
+        X = X.reshape(X.shape[0], self.D)
+
+        # forward path into the first layer
+        hidden_layer, cache_hidden_layer = affine_relu_forward(X, W1, b1)
+
+        # forward path into the second layer
+        scores, cache_scores = affine_forward(hidden_layer, W2, b2)        
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -107,7 +121,23 @@ class TwoLayerNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        loss, dscores = softmax_loss(scores, y)
+        loss += .5 * self.reg * np.sum(W1**2)
+        loss += .5 * self.reg * np.sum(W2**2)
+
+        # backward path into the second layer
+        dX1, dW2, db2 = affine_backward(dscores, cache_scores)
+        dW2 += self.reg * W2
+
+        # backward path into the first layer
+        dX, dW1, db1 = affine_relu_backward(dX1, cache_hidden_layer)
+        dW1 += self.reg * W1
+
+        # set the gradients
+        grads.update({'W1': dW1,
+                      'b1': db1,
+                      'W2': dW2,
+                      'b2': db2})
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
