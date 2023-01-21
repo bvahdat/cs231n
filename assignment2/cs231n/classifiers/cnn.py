@@ -55,7 +55,14 @@ class ThreeLayerConvNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        C, H, W = input_dim
+        HP, WP = (H - 2) // 2 + 1, (W - 2) // 2 + 1 # height and width after padding
+        self.params.update({'W1': weight_scale * np.random.randn(num_filters, C, filter_size, filter_size),
+                            'W2': weight_scale * np.random.randn(num_filters * HP * WP, hidden_dim),
+                            'W3': weight_scale * np.random.randn(hidden_dim, num_classes),
+                            'b1': np.zeros(num_filters),
+                            'b2': np.zeros(hidden_dim),
+                            'b3': np.zeros(num_classes)})
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -95,7 +102,9 @@ class ThreeLayerConvNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        out, cache_conv = conv_relu_pool_forward(X, W1, b1, conv_param, pool_param)
+        out, cache_affine1 = affine_relu_forward(out, W2, b2)
+        scores, cache_affine2 = affine_forward(out, W3, b3)
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -118,7 +127,19 @@ class ThreeLayerConvNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        loss, dscores = softmax_loss(scores, y)
+
+        loss += .5 * self.reg * np.sum(W1**2)
+        loss += .5 * self.reg * np.sum(W2**2)
+        loss += .5 * self.reg * np.sum(W3**2)
+
+        dout, grads['W3'], grads['b3'] = affine_backward(dscores, cache_affine2)
+        dout, grads['W2'], grads['b2'] = affine_relu_backward(dout, cache_affine1)
+        dout, grads['W1'], grads['b1'] = conv_relu_pool_backward(dout, cache_conv)
+
+        grads['W3'] += self.reg * W3
+        grads['W2'] += self.reg * W2
+        grads['W1'] += self.reg * W1
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################

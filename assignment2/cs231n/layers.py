@@ -119,9 +119,8 @@ def relu_backward(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    N = x.shape[0]
-    x_flattened = x.reshape(N, -1) # (N, D)
-    dx = dout * np.where(x_flattened > 0., 1., 0.) # (d1, ..., d_k) * (d1, ..., d_k) = (d1, ..., d_k)
+    dx = np.array(dout, copy=True)
+    dx[x <= 0] = 0
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -201,7 +200,39 @@ def batchnorm_forward(x, gamma, beta, bn_param):
         #######################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        # mean of the shape (D,)
+        mu = 1./N * np.sum(x, axis = 0)
+
+        # diff between data and mean (N, D)
+        xmu = x - mu
+
+        # square of diff (N, D)
+        sq = xmu ** 2
+
+        # variance of the shape (D,)
+        var = 1./N * np.sum(sq, axis = 0)
+
+        # square of variance + epsillon (D,)
+        sqrtvar = np.sqrt(var + eps)
+
+        # inverted sqrtvar (D,)
+        ivar = 1./sqrtvar
+
+        # normalize (N, D)
+        xhat = xmu * ivar
+
+        # learnable parameter gamma (N, D)
+        gammax = gamma * xhat
+
+        # learnable parameter beta (N, D)
+        out = gammax + beta
+
+        # build the cache
+        cache = (xhat, gamma, xmu, ivar, sqrtvar, var, mu, eps, x)
+
+        # update running mean and running variance using momentum
+        running_mean = momentum * running_mean + (1.0 - momentum) * mu
+        running_var = momentum * running_var + (1.0 - momentum) * var
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         #######################################################################
@@ -216,7 +247,10 @@ def batchnorm_forward(x, gamma, beta, bn_param):
         #######################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        mu = running_mean
+        var = running_var
+        xhat = (x - mu) / np.sqrt(var + eps)
+        out = gamma * xhat + beta
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         #######################################################################
@@ -258,7 +292,43 @@ def batchnorm_backward(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    xhat, gamma, xmu, ivar, sqrtvar, var, mu, eps, x = cache
+    N, D = dout.shape
+
+    # (N, D)
+    dgammax = dout
+    # (D,)
+    dbeta = np.sum(dout, axis=0)
+
+    # (N, D)
+    dxhat = dgammax * gamma
+    # (D,)
+    dgamma = np.sum(xhat * dgammax, axis=0)
+
+    # (N, D)
+    dxmu = dxhat * ivar
+    # (D,)
+    divar = np.sum(xmu * dxhat, axis=0)
+
+    # (D,)
+    dsqrtvar = divar * -1./(sqrtvar**2)
+
+    # (D,)
+    dvar = 0.5 * dsqrtvar * (var + eps)**(-0.5)
+
+    # (N, D)
+    dsqr = dvar * 1 / N * np.ones((N, D))
+
+    # (N, D)
+    dxmu += 2 * xmu * dsqr
+
+    # (N, D)
+    dx = dxmu
+    # (D,)
+    dmu = - np.sum(dxmu, axis=0)
+
+    # (N, D)
+    dx += dmu * 1 / N * np.ones((N, D))
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -293,7 +363,13 @@ def batchnorm_backward_alt(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    xhat, gamma, xmu, ivar, sqrtvar, var, mu, eps, x = cache
+    N, D = dout.shape
+
+    dbeta = np.sum(dout, axis=0)
+    dgamma = np.sum((x - mu) * (var + eps)**(-.5) * dout, axis=0)
+    dx = (1 / N) * gamma * (var + eps)**(-1 / 2) * (N * dout - np.sum(dout, axis=0) - (x - mu) * (var + eps)**(-1) * np.sum(dout * (x - mu), axis=0))
+
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -512,7 +588,19 @@ def conv_forward_naive(x, w, b, conv_param):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    N, C, H, W = x.shape
+    F, _, HH, WW = w.shape
+    P = conv_param['pad']
+    S = conv_param['stride']
+    x_padded = np.pad(x, ((0,), (0,), (P,), (P,)), 'constant')
+    HO = 1 + (H + 2 * P - HH) // S
+    WO = 1 + (W + 2 * P - WW) // S
+    out = np.zeros((N, F, HO, WO))
+    for n in range(N):
+      for f in range(F):
+        for ho in range(HO):
+          for wo in range(WO):
+            out[n, f, ho, wo] = np.sum(x_padded[n, :, ho * S:ho * S + HH, wo * S:wo * S + WW] * w[f]) + b[f]
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -541,7 +629,28 @@ def conv_backward_naive(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    x, w, b, conv_param = cache
+    N, C, H, W = x.shape
+    F, C, HH, WW = w.shape
+    P = conv_param['pad']
+    S = conv_param['stride']
+    HO = dout.shape[2]
+    WO = dout.shape[3]
+
+    x_padded = np.pad(x, ((0,), (0,), (P,), (P,)), 'constant')
+    dx_padded = np.zeros(x_padded.shape)
+    dw = np.zeros(w.shape)
+    db = np.zeros(b.shape)
+
+    for n in range(N):
+      for f in range(F):
+        db[f] += dout[n, f].sum()
+        for ho in range(HO):
+          for wo in range(WO):
+            dx_padded[n, :, ho * S:ho * S + HH, wo * S:wo * S + WW] += w[f] * dout[n, f, ho, wo]
+            dw[f] += x_padded[n, :, ho * S:ho * S + HH, wo * S:wo * S + WW] * dout[n, f, ho, wo]
+
+    dx = dx_padded[:, :, P:-P, P:-P]
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -575,7 +684,19 @@ def max_pool_forward_naive(x, pool_param):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    N, C, H, W = x.shape
+    PH = pool_param['pool_height']
+    PW = pool_param['pool_width']
+    S = pool_param['stride']
+    HO = 1 + (H - PH) // S
+    WO = 1 + (W - PW) // S
+    out = np.zeros((N, C, HO, WO))
+
+    for n in range(N):
+      for c in range(C):
+        for ho in range(HO):
+          for wo in range(WO):
+            out[n, c, ho, wo] = np.max(x[n, c, ho * S:ho * S + PH, wo * S:wo * S + PW])
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -602,7 +723,22 @@ def max_pool_backward_naive(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    x, pool_param = cache
+    N, C, H, W = x.shape
+    PH = pool_param['pool_height']
+    PW = pool_param['pool_width']
+    S = pool_param['stride']
+    HO = dout.shape[2]
+    WO = dout.shape[3]
+    dx = np.zeros(x.shape)
+
+    for n in range(N):
+      for c in range(C):
+        for ho in range(HO):
+          for wo in range(WO):
+            window = x[n, c, ho * S:ho * S + PH, wo * S:wo * S + PW]
+            k, l = np.unravel_index(window.argmax(), window.shape)
+            dx[n, c, ho * S + k, wo * S + l] = dout[n, c, ho, wo]
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
