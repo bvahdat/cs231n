@@ -221,10 +221,10 @@ def batchnorm_forward(x, gamma, beta, bn_param):
         # normalize (N, D)
         xhat = xmu * ivar
 
-        # learnable parameter gamma (N, D)
+        # multiply the learnable parameter gamma of the shape (D,) resulting the shape (N, D)
         gammax = gamma * xhat
 
-        # learnable parameter beta (N, D)
+        # add the learnable parameter beta of the shape (D,) resulting the shape (N, D)
         out = gammax + beta
 
         # build the cache
@@ -292,21 +292,24 @@ def batchnorm_backward(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    xhat, gamma, xmu, ivar, sqrtvar, var, mu, eps, x = cache
     N, D = dout.shape
+    xhat, gamma, xmu, ivar, sqrtvar, var, mu, eps, x = cache
 
     # (N, D)
     dgammax = dout
+
     # (D,)
     dbeta = np.sum(dout, axis=0)
 
     # (N, D)
     dxhat = dgammax * gamma
+
     # (D,)
     dgamma = np.sum(xhat * dgammax, axis=0)
 
     # (N, D)
     dxmu = dxhat * ivar
+
     # (D,)
     divar = np.sum(xmu * dxhat, axis=0)
 
@@ -324,8 +327,9 @@ def batchnorm_backward(dout, cache):
 
     # (N, D)
     dx = dxmu
+
     # (D,)
-    dmu = - np.sum(dxmu, axis=0)
+    dmu = -np.sum(dxmu, axis=0)
 
     # (N, D)
     dx += dmu * 1 / N * np.ones((N, D))
@@ -780,7 +784,11 @@ def spatial_batchnorm_forward(x, gamma, beta, bn_param):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    N, C, H, W = x.shape
+
+    x = x.transpose(0, 2, 3, 1).reshape(N * H * W, C)
+    out, cache = batchnorm_forward(x, gamma, beta, bn_param)
+    out = out.reshape(N, H, W, C).transpose(0, 3, 1, 2)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -814,7 +822,11 @@ def spatial_batchnorm_backward(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    N, C, H, W = dout.shape
+
+    dout = dout.transpose(0, 2, 3, 1).reshape(N * H * W, C)
+    dx, dgamma, dbeta = batchnorm_backward_alt(dout, cache)
+    dx = dx.reshape(N, H, W, C).transpose(0, 3, 1, 2)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -833,8 +845,8 @@ def spatial_groupnorm_forward(x, gamma, beta, G, gn_param):
 
     Inputs:
     - x: Input data of shape (N, C, H, W)
-    - gamma: Scale parameter, of shape (C,)
-    - beta: Shift parameter, of shape (C,)
+    - gamma: Scale parameter, of shape (1,C,1,1)
+    - beta: Shift parameter, of shape (1,C,1,1)
     - G: Integer mumber of groups to split into, should be a divisor of C
     - gn_param: Dictionary with the following keys:
       - eps: Constant for numeric stability
@@ -854,7 +866,44 @@ def spatial_groupnorm_forward(x, gamma, beta, G, gn_param):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    N, C, H, W = x.shape
+    size = (N * G, C // G * H * W)
+
+    # reshape input into appropriate dimension (N * G, C // G * H * W) 
+    x = x.reshape(size)
+
+    # mean of the shape (N * G, 1)
+    mu = 1./size[1] * np.sum(x, axis = 1, keepdims=True)
+
+    # diff between data and mean (N * G, C // G * H * W)
+    xmu = x - mu
+
+    # square of diff (N * G, C // G * H * W)
+    sq = xmu ** 2
+
+    # variance of the shape (N * G, 1)
+    var = 1./size[1] * np.sum(sq, axis = 1, keepdims= True)
+
+    # square of variance + epsillon (N * G, 1)
+    sqrtvar = np.sqrt(var + eps)
+
+    # inverted sqrtvar (N * G, 1)
+    ivar = 1./sqrtvar
+
+    # normalize (N * G, C // G * H * W)
+    xhat = xmu * ivar
+
+    # reshape input into it's original dimension (N, C, H, W)
+    xhat = xhat.reshape(N, C, H, W)
+
+    # multiply the learnable parameter gamma of the shape (1, C, 1, 1) resulting the shape (N, C, H, W)
+    gammax = gamma * xhat
+
+    # add the learnable parameter beta of the shape (1, C, 1, 1) resulting the shape (N, C, H, W)
+    out = gammax + beta
+
+    # build the cache
+    cache = (xhat, gamma, xmu, ivar, sqrtvar, var, mu, eps, x, size)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -873,8 +922,8 @@ def spatial_groupnorm_backward(dout, cache):
 
     Returns a tuple of:
     - dx: Gradient with respect to inputs, of shape (N, C, H, W)
-    - dgamma: Gradient with respect to scale parameter, of shape (C,)
-    - dbeta: Gradient with respect to shift parameter, of shape (C,)
+    - dgamma: Gradient with respect to scale parameter, of shape (1,C,1,1)
+    - dbeta: Gradient with respect to shift parameter, of shape (1,C,1,1)
     """
     dx, dgamma, dbeta = None, None, None
 
@@ -884,7 +933,56 @@ def spatial_groupnorm_backward(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    N, C, H, W = dout.shape
+    xhat, gamma, xmu, ivar, sqrtvar, var, mu, eps, x, size = cache
+
+    # axis for summation
+    sumaxis = (0, 2, 3)
+
+    # (N, C, H, W)
+    dgammax = dout
+
+    # (1, C, 1, 1)
+    dbeta = np.sum(dout, axis=sumaxis, keepdims = True)
+
+    # (N, C, H, W)
+    dxhat = dgammax * gamma
+
+    # (N * G, C // G * H * W)
+    dxhat = dxhat.reshape(size)
+
+    # (1, C, 1, 1)
+    dgamma = np.sum(xhat * dgammax, axis=sumaxis, keepdims = True)
+
+    # (N * G, C // G * H * W)
+    dxmu = dxhat * ivar
+
+    # (N * G, C // G * H * W)
+    divar = np.sum(xmu * dxhat, axis=1, keepdims = True)
+
+    # (N * G, C // G * H * W)
+    dsqrtvar = divar * -1./(sqrtvar**2)
+
+    # (N * G, C // G * H * W)
+    dvar = 0.5 * dsqrtvar * (var + eps)**(-0.5)
+
+    # (N * G, C // G * H * W)
+    dsqr = dvar * 1 / size[1] * np.ones(size)
+
+    # (N * G, C // G * H * W)
+    dxmu += 2 * xmu * dsqr
+
+    # (N * G, C // G * H * W)
+    dx = dxmu
+
+    # (N * G, 1)
+    dmu = -np.sum(dxmu, axis=1, keepdims = True)
+
+    # (N * G, C // G * H * W)
+    dx += dmu * 1 / size[1] * np.ones(size)
+
+    # (N, C, H, W)
+    dx = dx.reshape(N, C, H, W)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
