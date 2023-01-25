@@ -92,7 +92,7 @@ def relu_forward(x):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    out = np.maximum(x, 0.) # (N, d1, ..., d_k)
+    out = np.maximum(0., x) # (N, d1, ..., d_k)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -119,8 +119,8 @@ def relu_backward(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    dx = np.array(dout, copy=True)
-    dx[x <= 0] = 0
+    dx = dout
+    dx[x < 0] = 0
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -170,6 +170,7 @@ def batchnorm_forward(x, gamma, beta, bn_param):
     mode = bn_param['mode']
     eps = bn_param.get('eps', 1e-5)
     momentum = bn_param.get('momentum', 0.9)
+    layernorm = bn_param.get("layernorm", 0)
 
     N, D = x.shape
     running_mean = bn_param.get('running_mean', np.zeros(D, dtype=x.dtype))
@@ -228,11 +229,13 @@ def batchnorm_forward(x, gamma, beta, bn_param):
         out = gammax + beta
 
         # build the cache
-        cache = (xhat, gamma, xmu, ivar, sqrtvar, var, mu, eps, x)
+        axis = 1 if layernorm else 0
+        cache = (xhat, gamma, xmu, ivar, sqrtvar, var, eps, axis)
 
         # update running mean and running variance using momentum
-        running_mean = momentum * running_mean + (1.0 - momentum) * mu
-        running_var = momentum * running_var + (1.0 - momentum) * var
+        if not layernorm:
+            running_mean = momentum * running_mean + (1.0 - momentum) * mu
+            running_var = momentum * running_var + (1.0 - momentum) * var
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         #######################################################################
@@ -293,19 +296,19 @@ def batchnorm_backward(dout, cache):
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
     N, D = dout.shape
-    xhat, gamma, xmu, ivar, sqrtvar, var, mu, eps, x = cache
+    xhat, gamma, xmu, ivar, sqrtvar, var, eps, axis = cache
 
     # (N, D)
     dgammax = dout
 
     # (D,)
-    dbeta = np.sum(dout, axis=0)
+    dbeta = np.sum(dout, axis=axis)
 
     # (N, D)
     dxhat = dgammax * gamma
 
     # (D,)
-    dgamma = np.sum(xhat * dgammax, axis=0)
+    dgamma = np.sum(xhat * dgammax, axis=axis)
 
     # (N, D)
     dxmu = dxhat * ivar
@@ -367,11 +370,11 @@ def batchnorm_backward_alt(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    xhat, gamma, xmu, ivar, sqrtvar, var, mu, eps, x = cache
+    xhat, gamma, xmu, ivar, sqrtvar, var, mu, eps, x, axis = cache
     N, D = dout.shape
 
-    dbeta = np.sum(dout, axis=0)
-    dgamma = np.sum((x - mu) * (var + eps)**(-.5) * dout, axis=0)
+    dbeta = np.sum(dout, axis=axis)
+    dgamma = np.sum((x - mu) * (var + eps)**(-.5) * dout, axis=axis)
     dx = (1 / N) * gamma * (var + eps)**(-1 / 2) * (N * dout - np.sum(dout, axis=0) - (x - mu) * (var + eps)**(-1) * np.sum(dout * (x - mu), axis=0))
 
 
@@ -419,7 +422,10 @@ def layernorm_forward(x, gamma, beta, ln_param):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    ln_param['mode'] = 'train'
+    ln_param['layernorm'] = 1 
+    out, cache = batchnorm_forward(x.T, gamma.reshape(-1,1), beta.reshape(-1,1), ln_param)
+    out = out.T 
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -454,7 +460,8 @@ def layernorm_backward(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    dx, dgamma, dbeta = batchnorm_backward_alt(dout.T, cache)
+    dx = dx.T # (N,D)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -503,7 +510,8 @@ def dropout_forward(x, dropout_param):
         #######################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        mask = (np.random.rand(*x.shape) < p) / p
+        out = x * mask
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         #######################################################################
@@ -515,7 +523,7 @@ def dropout_forward(x, dropout_param):
         #######################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        out = x
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         #######################################################################
@@ -546,7 +554,7 @@ def dropout_backward(dout, cache):
         #######################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        dx = mask * dout
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         #######################################################################
@@ -903,7 +911,7 @@ def spatial_groupnorm_forward(x, gamma, beta, G, gn_param):
     out = gammax + beta
 
     # build the cache
-    cache = (xhat, gamma, xmu, ivar, sqrtvar, var, mu, eps, x, size)
+    cache = (xhat, gamma, xmu, ivar, sqrtvar, var, eps, size)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -934,7 +942,7 @@ def spatial_groupnorm_backward(dout, cache):
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
     N, C, H, W = dout.shape
-    xhat, gamma, xmu, ivar, sqrtvar, var, mu, eps, x, size = cache
+    xhat, gamma, xmu, ivar, sqrtvar, var, eps, size = cache
 
     # axis for summation
     sumaxis = (0, 2, 3)
